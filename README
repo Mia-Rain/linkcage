@@ -2,6 +2,8 @@
 # Linkcage: a cage for your links!
   - easily manage (all of) your links from a single simple config file!
   - in nearly pure posix sh!
+  -- Additionly there are plans for multifile links!
+    - a feature exclusive to linkcage!
 # Requires: (ONLY)
   - a posix shell (bash should "count")
   - ln - for creating links
@@ -28,3 +30,5 @@
  - symlink removal (typically uses `unlink <link>`)
   - will fallback to rm if `unlink <link>` exits != 0
 ---
+# Config - an example config can be found at $/ex.conf
+  - it also features some information about the multifile links

@@ -1,0 +1,39 @@
+#!/bin/sh
+shrealpath() { # better to not use realpath as some posix shells may not use the function
+  [ "${1##/*}" = "" ] && { # check if not already full path - /ex/ex2##/* = ""
+    cpath="${1%/*}"; [ -e "$cpath" ] || { echo "$cpath is not a file/folder!! Falling back.."; exit 1;}
+    cd "${cpath}"; printf '%s' "$(command pwd -P)/${1##*/}" # return for $() usage
+  }
+}
+shcat() {
+   IFS=""; while read -r p || [ -n "$p" ]; do
+      printf '%s\n' "$p"
+    done <&0
+}
+dconf() {
+  IFS=""
+  if [ -e ./config ];then
+    conf=./config
+  elif [ -e ${XDG_CONFIG_HOME:-$HOME/.config}/linkcage/config ]; then
+    conf="${XDG_CONFIG_HOME:-$HOME/.config}/linkcage/config"
+  elif [ -e /etc/linkcage/config ];then
+    conf="/etc/linkcage/config"
+  fi
+  [ "$1" ] && conf="${1}"
+} # attempt to detect the config file location
+# STDIN configs will be handled by the parser
+depsetup() { # make sure all deps exist and match expected data
+  has() {
+    case "$(command -v $1 2>/dev/null)" in
+      alias*|"") return 1
+    esac
+  }
+  
+  has ln || { echo "ln IS REQUIRED..."; exit 1; }
+  has unlink || { has rm || { echo "unlink OR rm IS REQUIRED..."; exit 1;};}
+  
+  unset IFS; lsl=$(ls -l /dev/null); case "$lsl" in
+    *"- root root"*"/dev/null") lsl="ls -l"; compare="${lsl}";;
+    *) compare="fallback"; lsl="shrealpath";;
+  esac
+}
