@@ -7,7 +7,7 @@
 # Requires: (ONLY)
   - a posix shell (bash should "count")
   - ln - for creating links
-  - `ls -l` || realpath || readlink - for readling the realpath of links
+  - `ls -l` || puresh realpath - for readling the realpath of links
   - unlink || rm - for removing your links
 ---
 # Live Update:
@@ -21,14 +21,19 @@
 
  - Live changes detection (typically uses `ls -l`)
   - live changes are detected using $(pshcat) and != (this will be much slower)
-    - in the situation that `ls -l` returns data does not match a speical case
+    - in the situation that `ls -l` returns data does not match a special case
  - Realpath reading will also make use of `ls -l`
-  - falling back to realpath followed by finally readlink
-    - should the previous mentioned util exit != 0 
+  - falling back to an puresh realpath
+    - should `ls -l /dev/null` not match the special case
       - stat can also be used for this purpose 
       - but is not very portable (usage/flag wise) and thus not used
  - symlink removal (typically uses `unlink <link>`)
   - will fallback to rm if `unlink <link>` exits != 0
 ---
 # Config - an example config can be found at $/ex.conf
-  - it also features some information about the multifile links
+   - it also features some information about the multifile links
+# Locations: 
+  - ./config - highest level config; overrides all
+  - /etc/linkcage/config - system config; used if no others are present
+  - ${XDG_CONFIG_HOME:-$HOME/.config}/linkcage/config - user config; used if present
+  -- Custom configs; should be provided via STDIN ( linkcage < CONFIG )
