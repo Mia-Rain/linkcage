@@ -1,8 +1,13 @@
 #!/bin/sh
+# shellcheck disable=SC2086,SC2015
+#                           - && is used with :; which will prevent C from ussing if B is false
 shrealpath() { # better to not use realpath as some posix shells may not use the function
   [ "${1##/*}" = "" ] && { # check if not already full path - /ex/ex2##/* = ""
     cpath="${1%/*}"; [ -e "$cpath" ] || { echo "$cpath is not a file/folder!! Falling back.."; exit 1;}
-    cd "${cpath}"; printf '%s' "$(command pwd -P)/${1##*/}" # return for $() usage
+    [ -x "${cpath}" ] && { # +x / "is executable" means "can see contents" / "can enter" with folders
+      cd "${cpath}" || exit 1 # ER case
+      printf '%s' "$(command pwd -P)/${1##*/}" # return for $() usage
+    :;} || { echo "${cpath} is -x (contents cannot be seen / cannot cd into); should be +x... FAILING..."; exit 1;}
   }
 }
 shcat() {
@@ -30,10 +35,44 @@ depsetup() { # make sure all deps exist and match expected data
   }
   
   has ln || { echo "ln IS REQUIRED..."; exit 1; }
-  has unlink || { has rm || { echo "unlink OR rm IS REQUIRED..."; exit 1;};}
+  has unlink || {
+    has rm || {
+      echo "unlink OR rm IS REQUIRED..."; exit 1
+    :;}
+  }
   
   unset IFS; lsl=$(ls -l /dev/null); case "$lsl" in
     *"- root root"*"/dev/null") lsl="ls -l"; compare="${lsl}";;
     *) compare="fallback"; lsl="shrealpath";;
+  esac
+}
+confparse() {
+  lparse() {#     - support `1 > 2` & `1>2`
+    r="${p##*>}"; [ "$r" = "$p" ] && r="${p##* >}" # right side
+    l="${p%%>*}"; [ "$l" = "$p" ] && l="${p%% >*}" # left side
+    # a < case should go here
+    if [ -e "$r" -a ! -h "$r" ]; then # if $r is file and NOT a symlink
+      rf="${r}" # realfile
+      link="${l}" # where to/is link
+    elif [ -e "$l" -a ! -h "$l" ]; then # versa above
+      rf="${l}"
+      link="${r}"
+    else
+      return 1 # simply ignore invalid conf lines
+      # >&2 would be useful here
+    fi
+
+    # too tired to finish
+  }
+  # [ "$conf" ] || { dconf "$1";} # could have use
+  case "$conf" in
+    "")
+      while read -r p || [ -n "$p" ]; do
+        lparse "$p"
+      done<&0 ;; # STDIN case
+    *)
+      while read -r p || [ -n "$p" ]; do
+        lparse "$p"
+      done<"${conf}" ;;
   esac
 }
