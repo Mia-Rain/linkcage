@@ -1,14 +1,26 @@
 #!/bin/sh
-# shellcheck disable=SC2086,SC2015
-#                           - && is used with :; which will prevent C from ussing if B is false
+# shellcheck disable=SC2086,SC2015,SC2166
+# SC2015 - && is used with :; / ;:;
+# SC2166 - -a works in any real shell
+
 shrealpath() { # better to not use realpath as some posix shells may not use the function
-  [ "${1##/*}" = "" ] && { # check if not already full path - /ex/ex2##/* = ""
-    cpath="${1%/*}"; [ -e "$cpath" ] || { echo "$cpath is not a file/folder!! Falling back.."; exit 1;}
-    [ -x "${cpath}" ] && { # +x / "is executable" means "can see contents" / "can enter" with folders
-      cd "${cpath}" || exit 1 # ER case
-      printf '%s' "$(command pwd -P)/${1##*/}" # return for $() usage
-    :;} || { echo "${cpath} is -x (contents cannot be seen / cannot cd into); should be +x... FAILING..."; exit 1;}
-  }
+  [ "$lsl"  ] || depsetup
+  og="${PWD}"
+  [ "${1##/*}" != "" ] && { # check if not already full path - /ex/ex2##/* = ""
+    cpath="${1%/*}"; [ -e "$cpath" ] || { printf '%s is not a file/folder!! Falling back..' "$cpath"; return 1;}
+    {
+      if [ -d "$cpath" -a -x "$cpath" ]; then
+        cd "${cpath}" || return 1
+        rpath="$(pwd -P)/${1##*/}"
+        [ -d "$rpath" ] && { cd "$rpath"; rpath="$(pwd -P)";}
+      elif [ -f "$cpath" ]; then # fallback to ls -l if file
+        unalias -a # incase ls is an alias
+        IFS=" "; rpath=$(${lsl:-ls -l} "${cpath}"); rpath=${rpath##*>}
+      fi
+      printf '%s\n' "${rpath}"
+    }
+  } || echo "$1"
+  cd "$og" || return 1
 }
 shcat() {
    IFS=""; while read -r p || [ -n "$p" ]; do
@@ -35,19 +47,20 @@ depsetup() { # make sure all deps exist and match expected data
   }
   
   has ln || { echo "ln IS REQUIRED..."; exit 1; }
-  has unlink || {
-    has rm || {
+  has unlink && { unlink="unlink";:;} || {
+    has rm || { unlink="rm -rf";:;} || {
       echo "unlink OR rm IS REQUIRED..."; exit 1
     :;}
-  }
-  
+  }  
   unset IFS; lsl=$(ls -l /dev/null); case "$lsl" in
-    *"- root root"*"/dev/null") lsl="ls -l"; compare="${lsl}";;
-    *) compare="fallback"; lsl="shrealpath";;
+    *"- root root"*"/dev/null") lsl="ls -l";;
+    *) echo "ls -l does not match case... FAILING"; exit 1;;
   esac
 }
 confparse() {
   lparse() {#     - support `1 > 2` & `1>2`
+    [ "$unlink" ] || depsetup
+    p="${1}"
     r="${p##*>}"; [ "$r" = "$p" ] && r="${p##* >}" # right side
     l="${p%%>*}"; [ "$l" = "$p" ] && l="${p%% >*}" # left side
     # a < case should go here
@@ -58,11 +71,12 @@ confparse() {
       rf="${l}"
       link="${r}"
     else
-      return 1 # simply ignore invalid conf lines
-      # >&2 would be useful here
+      echo "WARNING: $p -- IS NOT A VALID CONF LINE" >&2
+      return 1
     fi
-
-    # too tired to finish
+    IFS=""
+    [ -e "$link" ] && ${unlink} ${link} # unlink link file
+    # still WIP
   }
   # [ "$conf" ] || { dconf "$1";} # could have use
   case "$conf" in
