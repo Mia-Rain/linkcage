@@ -4,21 +4,19 @@
 # SC2166 - -a works in any real shell
 
 shrealpath() { # better to not use realpath as some posix shells may not use the function
-  [ "$lsl"  ] || depsetup
+  [ "$lsl" ] || depsetup
   og="${PWD}"
   [ "${1##/*}" != "" ] && { # check if not already full path - /ex/ex2##/* = ""
-    cpath="${1%/*}"; [ -e "$cpath" ] || { printf '%s is not a file/folder!! Falling back..' "$cpath"; return 1;}
-    {
+    cpath="${1%/*}"; [ -e "$cpath" ] || return 1
       if [ -d "$cpath" -a -x "$cpath" ]; then
         cd "${cpath}" || return 1
         rpath="$(pwd -P)/${1##*/}"
         [ -d "$rpath" ] && { cd "$rpath"; rpath="$(pwd -P)";}
       elif [ -f "$cpath" ]; then # fallback to ls -l if file
         unalias -a # incase ls is an alias
-        IFS=" "; rpath=$(${lsl:-ls -l} "${cpath}"); rpath=${rpath##*>}
+        IFS=" "; rpath=$(ls -l "${cpath}"); rpath=${rpath##*>}
       fi
       printf '%s\n' "${rpath}"
-    }
   } || echo "$1"
   cd "$og" || return 1
 }
@@ -39,45 +37,58 @@ dconf() {
   [ "$1" ] && conf="${1}"
 } # attempt to detect the config file location
 # STDIN configs will be handled by the parser
-depsetup() { # make sure all deps exist and match expected data
-  has() {
-    case "$(command -v $1 2>/dev/null)" in
-      alias*|"") return 1
-    esac
-  }
-  
+has() {
+  case "$(command -v $1 2>/dev/null)" in
+    alias*|"") return 1
+  esac
+}
+depsetup() { # make sure all deps exist and match expected data  
   has ln || { echo "ln IS REQUIRED..."; exit 1; }
   has unlink && { unlink="unlink";:;} || {
     has rm || { unlink="rm -rf";:;} || {
       echo "unlink OR rm IS REQUIRED..."; exit 1
     :;}
   }  
-  unset IFS; lsl=$(ls -l /dev/null); case "$lsl" in
-    *"- root root"*"/dev/null") lsl="ls -l";;
+  unalias -a; unset IFS; lsl=$(ls -l /dev/null)
+  case "$lsl" in
+    *"-"*"root"*"root"*"/dev/null"*) lsl="ls -l";; # might want to change this..
     *) echo "ls -l does not match case... FAILING"; exit 1;;
   esac
 }
-confparse() {
-  lparse() {#     - support `1 > 2` & `1>2`
-    [ "$unlink" ] || depsetup
-    p="${1}"
-    r="${p##*>}"; [ "$r" = "$p" ] && r="${p##* >}" # right side
-    l="${p%%>*}"; [ "$l" = "$p" ] && l="${p%% >*}" # left side
-    # a < case should go here
-    if [ -e "$r" -a ! -h "$r" ]; then # if $r is file and NOT a symlink
-      rf="${r}" # realfile
-      link="${l}" # where to/is link
-    elif [ -e "$l" -a ! -h "$l" ]; then # versa above
-      rf="${l}"
-      link="${r}"
-    else
-      echo "WARNING: $p -- IS NOT A VALID CONF LINE" >&2
-      return 1
-    fi
-    IFS=""
-    [ -e "$link" ] && ${unlink} ${link} # unlink link file
-    # still WIP
+linkpoint(){ # find location that $1 points to
+  [ -h "$1" ] && {
+    # [ "$lsl" ] || depsetup
+    IFS=""; loc="$(ls -l $1)"; loc="/${loc##*?>?/}"
+    printf '%s\n' "$loc"
+  :;} || return 1
+}
+lparse() {
+#     - support `1 > 2` & `1>2`
+  [ "${1%%#*}#" = "#" ] && return 0 # ignore lines that start with #
+  [ "$unlink" ] || depsetup
+  p="${1}"
+  r="${p##*> }"; #[ "$r" = "$p" ] && r="${p##*>}" # right side
+  l="${p%% >*}"; #[ "$l" = "$p" ] && l="${p%%>*}" # left side
+  # a < case should go here
+  if [ -e "$r" -a ! -h "$r" ]; then # if $r is file and NOT a symlink
+    rf="${r}" # realfile
+    link="${l}" # where to/is link
+  elif [ -e "$l" -a ! -h "$l" ]; then # versa above
+    rf="${l}"
+    link="${r}"
+  else
+    # printf "'%s'\n" "$l" "$r" # for debugging
+    printf 'WARNING: %s -- IS NOT A VALID CONF LINE\n' "$p"
+    return 1
+  fi
+  IFS=""; link="$(shrealpath ${link})"; rf="$(shrealpath ${rf})" # grab realpaths
+  [ ! -h "$link" -o "$(linkpoint ${link})" != "${rf}" ] && {
+    printf '%s\n' "relinking $link..." >&2
+    ${unlink} ${link} 2>/dev/null # unlink link file
+    ln -s "${rf}" "${link}"
   }
+}
+confparse() {
   # [ "$conf" ] || { dconf "$1";} # could have use
   case "$conf" in
     "")
@@ -90,3 +101,4 @@ confparse() {
       done<"${conf}" ;;
   esac
 }
+dconf "$@" ; confparse
